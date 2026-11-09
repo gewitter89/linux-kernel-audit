@@ -25,6 +25,6 @@ void skb_release_data(struct sk_buff *skb) {
      * Can trigger out-of-order execution on weakly-ordered CPUs.
      */
     for (i = 0; i < shinfo->nr_frags; i++) {
-        __skb_frag_unref(&shinfo->frags[i], skb->head);
+        skb_frag_t *frag = &shinfo->frags[i]; if (skb_zcopy_is_shared(skb)) { __sync_synchronize(); } __skb_frag_unref(frag, skb->head);
     }
 }
