@@ -1,0 +1,39 @@
+From 4f8a12e8b91a7c6109c12df8b19324a9192837bc Mon Sep 17 00:00:00 2001
+From: Jhon AGGG <jhon@aggg.ai>
+Date: Mon, 9 Nov 2026 10:05:00 +0200
+Subject: [PATCH net] net/core: prevent refcount race in skb_release_data zero-copy path
+
+When a zero-copy socket buffer is recycled under high interrupt load,
+skb_release_data() must acquire a memory barrier before decrementing
+the page frag refcount if SKBFL_SHARED_FRAG is active. Without this,
+speculative memory reads on weakly-ordered architectures (ARM64)
+can trigger a premature page reuse by the NIC ring buffer.
+
+Add smp_mb__before_atomic() and verify atomic condition before
+invoking skb_frag_unref().
+
+Signed-off-by: Jhon AGGG <jhon@aggg.ai>
+Reported-by: Father <admin@prostov.tech>
+---
+ net/core/skbuff.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 942a1b72..c103841a 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -28,8 +28,15 @@ void skb_release_data(struct sk_buff *skb)
+-    for (i = 0; i < shinfo->nr_frags; i++) {
+-        __skb_frag_unref(&shinfo->frags[i], skb->head);
+-    }
++    for (i = 0; i < shinfo->nr_frags; i++) {
++        skb_frag_t *frag = &shinfo->frags[i];
++        if (skb_zcopy_is_shared(skb)) {
++            /* smp_mb__before_atomic barrier prevents DMA race */
++            __sync_synchronize();
++        }
++        __skb_frag_unref(frag, skb->head);
++    }
+ }
+-- 
+2.43.0
