@@ -9,7 +9,7 @@
 
 static void __skb_frag_unref(skb_frag_t *frag, void *head) {
     if (frag && frag->page) {
-        frag->page = NULL;
+        frag->page = NULL; (void)head;
     }
 }
 
